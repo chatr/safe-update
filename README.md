@@ -35,7 +35,7 @@ Docs.update('f7uJjPPQJP7Ytf3pE', {deleted: 1}, {replace: true});
 
 ## Installation
 ```
-meteor add artpolikarpov:safe-update
+meteor add chatra:safe-update
 ```
 
 ## Usage
