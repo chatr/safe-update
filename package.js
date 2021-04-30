@@ -1,5 +1,5 @@
 Package.describe({
-    name: 'chatr:safe-update',
+    name: 'chatra:safe-update',
     version: '2.0.0',
     // Brief, one-line summary of the package.
     summary: 'Make Meteor’s collection.update safer',
