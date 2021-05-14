@@ -1,6 +1,6 @@
 Package.describe({
     name: 'chatra:safe-update',
-    version: '2.1.0',
+    version: '2.1.1',
     // Brief, one-line summary of the package.
     summary: 'Make Meteor’s collection.update safer',
     // URL to the Git repository containing the source code for this package.
@@ -21,6 +21,6 @@ Package.onUse(function (api) {
 
 Package.onTest(function (api) {
     api.use(['tinytest', 'test-helpers', 'meteor-base', 'mongo', 'tracker', 'insecure', 'autopublish']);
-    api.use('artpolikarpov:safe-update');
+    api.use('chatra:safe-update');
     api.addFiles('safe-update-tests.js');
 });
