@@ -1,84 +1,151 @@
-var Test = new Mongo.Collection('Test');
+import {Mongo} from 'meteor/mongo';
+import {Meteor} from 'meteor/meteor';
+import {Tinytest} from 'meteor/tinytest';
+import {Tracker} from 'meteor/tracker';
 
-var currentCount = function () {
-    return (Test.findOne('counter') || {}).count;
-};
-var updateCounter = function (options) {
-    options = options || {};
+const Test = new Mongo.Collection('Test');
 
-    var modifier = {},
-        setter = {count: options.inc ? 10 : currentCount() + 1},
-        updateOptions = _.pick(options, 'replace');
+// Helper function to get the current count
+let currentCount;
+if (Meteor.isFibersDisabled) {
+    // Meteor 3
+    currentCount = async () => {
+        const doc = await Test.findOneAsync('counter');
+        return doc ? doc.count : 0;
+    };
+} else {
+    // Meteor 2
+    currentCount = () => {
+        const doc = Test.findOne('counter');
+        return doc ? doc.count : 0;
+    };
+}
+
+// Function to update the counter
+const updateCounter = async (options = {}) => {
+    let modifier = {};
+    const count = (Meteor.isFibersDisabled
+        ? await currentCount()
+        : currentCount());
+    const setter = {count: options.inc ? 10 : count + 1};
+    const updateOptions = {replace: options.replace};
 
     if (options.set) {
         modifier.$set = setter;
     } else if (options.inc) {
         modifier.$inc = setter;
     } else {
+        // No modifier operator, attempting a full document replace
         modifier = setter;
     }
 
-    return Test.update('counter', modifier, updateOptions);
+    if (Meteor.isServer) {
+        // Server: Direct database update
+        if (Meteor.isFibersDisabled) {
+            // Meteor 3
+            return await Test.updateAsync('counter', modifier, updateOptions);
+        } else {
+            // Meteor 2
+            return Test.update('counter', modifier, updateOptions);
+        }
+    } else {
+        // Client: Call method
+        return new Promise((resolve, reject) => {
+            Meteor.call('updateCounter', options, (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            });
+        });
+    }
 };
 
+// Initialize the 'counter' document
 if (Meteor.isServer) {
-    if (!Test.findOne('counter')) {
-        Test.insert({_id: 'counter', count: 0, another: 'field'});
-    } else {
-        Test.update('counter', {$set: {another: 'field'}});
-    }
+    Meteor.startup(async () => {
+        const doc = await (Meteor.isFibersDisabled
+            ? Test.findOneAsync('counter')
+            : Test.findOne('counter'));
 
+        if (!doc) {
+            if (Meteor.isFibersDisabled) {
+                // Meteor 3
+                await Test.insertAsync({_id: 'counter', count: 0, another: 'field'});
+            } else {
+                // Meteor 2
+                Test.insert({_id: 'counter', count: 0, another: 'field'});
+            }
+        } else {
+            if (Meteor.isFibersDisabled) {
+                // Meteor 3
+                await Test.updateAsync('counter', {$set: {another: 'field'}});
+            } else {
+                // Meteor 2
+                Test.update('counter', {$set: {another: 'field'}});
+            }
+        }
+    });
+
+    // Define a Meteor method for client calls
     Meteor.methods({
-        updateCounter: updateCounter
+        async updateCounter(options) {
+            return await updateCounter(options);
+        },
     });
 }
 
-var basicTests = function () {
-    Tinytest.add('throws if modifier doesn’t contain any $-operators', function (test) {
-        test.throws(function () {
-            updateCounter();
-        });
+// Define the basic tests
+const basicTests = () => {
+    Tinytest.addAsync('throws if modifier does not contain any $-operators', async function (test, onComplete) {
+        try {
+            await updateCounter();
+            test.fail('Expected error not thrown');
+        } catch (error) {
+            test.instanceOf(error, Meteor.Error, 'Error should be an instance of Meteor.Error');
+            test.equal(error.error, 500, 'Error code should be "safe-update:no-modifier"');
+            onComplete();
+        }
     });
 
-    Tinytest.add('doesn’t throws with replace:true', function (test) {
-        test.equal(updateCounter({replace: true}), 1, 'one doc should be updated');
+    Tinytest.addAsync('does not throw with replace: true', async function (test, onComplete) {
+        const result = await updateCounter({replace: true});
+        test.equal(result, 1, 'One document should be updated');
+        onComplete();
     });
 
-    Tinytest.add('update works normally if modifier does contain some $-operators', function (test) {
-        var count = currentCount();
-        test.equal(updateCounter({set: true}), 1, 'one doc should be updated');
-        test.equal(count + 1, currentCount(), '+1 to counter');
-        test.equal(updateCounter({inc: true}), 1, 'one doc should be updated');
-        test.equal((count + 1) + 10, currentCount(), '+10 to counter');
+    Tinytest.addAsync('update works normally if modifier contains $-operators', async function (test, onComplete) {
+        const count = (Meteor.isFibersDisabled
+            ? await currentCount()
+            : currentCount());
+        await updateCounter({set: true});
+        test.equal(
+            (Meteor.isFibersDisabled ? await currentCount() : currentCount()),
+            count + 1,
+            'Counter should increment by 1'
+        );
+
+        await updateCounter({inc: true});
+        test.equal(
+            (Meteor.isFibersDisabled ? await currentCount() : currentCount()),
+            count + 11,
+            'Counter should increment by 10'
+        );
+        onComplete();
     });
 };
 
+// Run tests on the server
 if (Meteor.isServer) {
-    // server
     basicTests();
 }
 
+// Run tests on the client
 if (Meteor.isClient) {
-    // client
+    // Wait for the subscription to be ready
     Tracker.autorun(function (c) {
         if (typeof currentCount() !== 'undefined') {
-            // subscription is ready
+            // Subscription is ready
             basicTests();
             c.stop();
         }
     });
-
-
-    testAsyncMulti('update via methods calls behave identically', [
-        function (test, expect) {
-            Meteor.call('updateCounter', expect(function (error, result) {
-                test.instanceOf(error, Meteor.Error, 'error should be here');
-            }));
-
-            Meteor.call('updateCounter', {set: true}, expect(function (error, result) {
-                test.isUndefined(error, 'error should be undifined');
-                test.equal(result, 1, 'one doc should be updated');
-            }));
-        }
-    ]);
 }

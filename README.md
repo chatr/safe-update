@@ -1,58 +1,133 @@
-# Safer collection.update
+# chatra:safe-update
 
-I’ve recently erased 45 docs in the database because of the stupid behavior `collection.update`.
+[![Version](https://img.shields.io/badge/meteor-2.x%20|%203.x-brightgreen?logo=meteor&logoColor=white)](https://github.com/chatr/safe-update)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-This is the story of of how the idea of this package came.
+Make Meteor’s `collection.update`/`collection.updateAsync` safer by preventing unintended updates and enforcing best practices.
 
-## Look out!
-The behavior of `collection.update` in Meteor a bit dangerous.
+## Table of Contents
 
-If you forget to add a $set operator to a mongo modifier or any other $-operator (like $set, $unset, $inc, etc.), then it is instead interpreted as a literal document, and completely replaces whatever was previously in the database.
-You may accidentally lose a document if you write this:
-```
-Docs.update('f7uJjPPQJP7Ytf3pE', {important: 1});
-```
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Usage](#usage)
+    - [Prevent Empty Selector Updates](#prevent-empty-selector-updates)
+    - [Enforce Modifier Operators](#enforce-modifier-operators)
+    - [Configuration](#configuration)
+- [Examples](#examples)
+- [Tests](#tests)
+- [License](#license)
 
-...instead of this:
-```
-Docs.update('f7uJjPPQJP7Ytf3pE', {$set: {important: 1}});
-```
+---
 
+## Introduction
 
-## Mkay
-This package protects you from this and throws if there is no $-operators in the modifier:
-```
-Docs.update('f7uJjPPQJP7Ytf3pE', {important: 1});
-// /!\ Error: modifier doesn’t contain any $-operators...
-```
+The `chatra:safe-update` package enhances the safety of MongoDB `update` operations in Meteor applications by:
 
-But if you still want to rewrite the entire document, just pass the `replace:true` to the options object:
-```
-Docs.update('f7uJjPPQJP7Ytf3pE', {deleted: 1}, {replace: true});
-// → One doc updated successfully
-```
+- Preventing updates with empty selectors unless explicitly allowed.
+- Ensuring that updates use modifier operators (e.g., `$set`, `$inc`) unless the `replace` option is specified.
+- Providing configuration options to include or exclude specific collections.
 
+---
 
 ## Installation
-```
+
+```shell
 meteor add chatra:safe-update
 ```
 
+---
+
+## Compatibility
+
+- **Meteor Version 3 and Above**: Fully compatible, using the new asynchronous Meteor collections’ methods.
+- **Meteor Version 2**: Maintains compatibility with synchronous methods.
+
+---
+
 ## Usage
-Just use [collection.update](http://docs.meteor.com/#/full/update) as usual. You will be warned in case of danger of replacing the docs.
-But if replacement of the whole document is what you need, force it using `replace:true`.
 
-### Applying to specific collections
+### Prevent Empty Selector Updates
 
-You can apply a plugin to specific collections by passing an `except` or `only` option to the `SAFE_UPDATE_CONFIG` global variable. This is useful for tests and collections from third-party packages.
-```
-SAFE_UPDATE_CONFIG = {
-  except: ['TestCollection']
-  // or only: ['Foo', 'Bar']
-};
+By default, the package throws an error if you attempt to perform an update with an empty selector:
+
+```javascript
+// Throws an error
+MyCollection.update({}, { $set: { field: 'value' } });
 ```
 
-:ok_hand:
+To allow updates with an empty selector, pass `allowEmptySelector: true` in the options:
+
+```javascript
+// Allowed
+MyCollection.update({}, { $set: { field: 'value' } }, { allowEmptySelector: true });
+```
+
+### Enforce Modifier Operators
+
+The package ensures that you use modifier operators (e.g., `$set`, `$inc`) in your updates:
+
+```javascript
+// Throws an error
+MyCollection.update({ _id: 'docId' }, { field: 'value' });
+```
+
+To replace a document entirely, pass `replace: true` in the options:
+
+```javascript
+// Allowed
+MyCollection.update({ _id: 'docId' }, { field: 'value' }, { replace: true });
+```
+
+### Configuration
+
+To configure the package behavior, use the `setSafeUpdateConfig` function provided by the package:
+
+```javascript
+import { setSafeUpdateConfig } from 'meteor/chatra:safe-update';
+
+setSafeUpdateConfig({
+  except: ['logs'], // Collections to exclude from safety checks
+  only: ['users', 'posts'], // Only apply safety checks to these collections
+});
+```
+
+- **`except`**: An array of collection names to exclude from the safety checks.
+- **`only`**: An array of collection names to include in the safety checks (all others are excluded).
+
+---
+
+## Examples
+
+```javascript
+import { Mongo } from 'meteor/mongo';
+
+const Messages = new Mongo.Collection('messages');
+
+// Safe update with modifier
+Messages.update({ _id: 'msgId' }, { $set: { text: 'Updated message' } });
+await Messages.updateAsync({ _id: 'msgId' }, { $set: { text: 'Updated message' } });
+
+// Unsafe update without modifier (throws error)
+Messages.update({ _id: 'msgId' }, { text: 'Updated message' }); // Throws error
+await Messages.updateAsync({ _id: 'msgId' }, { text: 'Updated message' }); // Throws error
+
+// Replacing document with replace option
+Messages.update({ _id: 'msgId' }, { text: 'Updated message' }, { replace: true });
+await Messages.updateAsync({ _id: 'msgId' }, { text: 'Updated message' }, { replace: true });
+```
+
+---
+
+## Tests
+
+The package includes a comprehensive test suite. To run the tests:
+
+```shell
+meteor test-packages ./ --driver-package meteortesting:mocha
+```
+
+---
 
 ## License
-MIT
+
+This package is licensed under the MIT License.
