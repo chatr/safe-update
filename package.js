@@ -7,7 +7,7 @@ Package.describe({
 });
 
 Package.onUse((api) => {
-    api.versionsFrom(['1.0', '2.0', '3.0']);
+    api.versionsFrom(['1.10', '2.3', '3.0']);
     api.use(['ecmascript', 'mongo']);
     api.mainModule('safe-update.js');
     api.export('setSafeUpdateConfig', 'server');
