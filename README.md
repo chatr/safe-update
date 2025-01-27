@@ -123,7 +123,7 @@ await Messages.updateAsync({ _id: 'msgId' }, { text: 'Updated message' }, { repl
 The package includes a comprehensive test suite. To run the tests:
 
 ```shell
-meteor test-packages ./ --driver-package meteortesting:mocha
+meteor test-packages ./
 ```
 
 ---
